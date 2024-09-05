@@ -29,7 +29,46 @@
    # Project Overview
 
 This project uses vector embeddings and semantic search to answer questions based on a document's content. The system processes a the MeTTa documentation in form of a PDF document to generate embeddings and stores them in a vector database for efficient querying. It leverages the HuggingFace library for embeddings and a local Chroma database for vector storage.
+## Setup Instructions
 
+To set up this project on your local machine, follow these steps:
+
+### 1. **Clone the Repository**
+
+First, clone the repository to your local machine:
+
+```bash
+git clone https://github.com/BrookFeleke/Semrag.git
+cd Semrag
+```
+
+### 2. **Install Dependencies**
+
+You can install these packages using the following command:
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. **Configure Environment Variables**
+
+The project requires an API key for Gemini AI, which needs to be stored in an `.env` file. Create a file named `.env` in the root directory of the project with the following content:
+
+```dotenv
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+Replace `your_gemini_api_key_here` with your actual Gemini API key. This key is necessary for the project to interact with the Gemini AI API.
+
+### 4. **Run the Application**
+
+With everything set up, you can now run the Flask application using the following command:
+
+```bash
+python rag.py
+```
+
+The application will start, and you can access it by navigating to `http://127.0.0.1:5000/` in your web browser.
 ## Key Components
 
 ### 1. **Vector Database with Chroma**

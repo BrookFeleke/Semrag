@@ -24,11 +24,11 @@ def generate_rag_prompt(query, context):
     prompt = ("""
   You are a helpful and informative bot that answers questions using text from the reference context included below. \
   Be sure to respond in a complete sentence, being comprehensive, including all relevant background information. \
-  You are talking to a software developer that is trying to learn the metta type talk language as quickly as possible so try to include quick code examples when necessary for explanation . \
+  You are talking to a software developer that is trying to understand a thesis paper and has question about it. \
   Format any code sections using markdown synax. \
   After specifying in markdown format what language the code will be, always start writing the code on a new line. \
   If there is code in your output, make sure to explain it in detail. \
-  Your goal is to clearly explain the underlying concepts of the metta syntax. \
+  Your goal is to clearly explain the underlying concepts only in the context provided. \
   Your entire output should be markdown formatted, use titles and bullet points. \
   Use new lines to separate different sections. \
   If the context is irrelevant to the answer, you may ignore it.
@@ -41,7 +41,7 @@ def generate_rag_prompt(query, context):
 def get_relevant_context_from_db(query):
     context = ""
     embedding_function = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    vector_db = Chroma(persist_directory="./chroma_db_nccn", embedding_function=embedding_function)
+    vector_db = Chroma(persist_directory="./chroma_db_2", embedding_function=embedding_function)
     search_results = vector_db.similarity_search(query, k=6)
     for result in search_results:
         context += result.page_content + "\n"

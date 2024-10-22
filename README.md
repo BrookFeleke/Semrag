@@ -1,34 +1,110 @@
-### Answers to the Questions
 
-1. **Different Kinds of Similarity Search & Their Metrics**:
-   - **Cosine Similarity**: Measures the cosine of the angle between two vectors. It's often used in text similarity tasks because it normalizes the length of the vectors, focusing purely on the orientation. 
-     - *Metric*: Cosine of the angle between vectors, with values ranging from -1 (completely dissimilar) to 1 (completely similar).
 
-   - **Euclidean Distance**: Measures the straight-line distance between two points in a multi-dimensional space. It’s a straightforward measure of similarity but doesn’t account for the magnitude of the vectors.
-     - *Metric*: Square root of the sum of squared differences across all dimensions.
+# Improving RAG with Semantic Chunking, Query Expansion, Re-Ranking, and Prompt Engineering 
 
-   - **Manhattan Distance**: Also known as L1 distance, it sums the absolute differences between the coordinates of the vectors. It's useful in grid-like or high-dimensional spaces where direct distance measures might not capture similarity well.
-     - *Metric*: Sum of absolute differences between vector components.
+## Introduction
 
-   - **Jaccard Similarity**: Used for comparing the similarity between finite sets, often in cases like text documents represented as sets of words.
-     - *Metric*: Ratio of the intersection to the union of two sets.
+This project is a RAG application that helps ask questions to the Competent Program Evolution thesis paper. It attempts to enhance the Retrieval-Augmented Generation (RAG) pipeline by integrating semantic chunking  query expansion, re-ranking, and prompt engineering to improve the accuracy and relevance of retrieved documents and the quality of generated responses. RAG pipelines combine information retrieval and natural language generation to answer queries based on retrieved data. This project illustrates how these techniques improve each stage of the process.
 
-   - **Dot Product**: Measures the magnitude of similarity by directly multiplying corresponding elements of two vectors and summing the results.
-     - *Metric*: Sum of products of corresponding vector elements; higher values indicate higher similarity.
+## Key Concepts
+### Chunking Strategy and Vector Store Improvements
+#### Unstructured PDF Loader: Topic-Based Splitting
+The project uses the **Unstructured PDF Loader** to split documents based on **topics** rather than arbitrarily dividing content. This is achieved through the `partition_pdf` function with the `chunking_strategy` set to `"by_title"`, ensuring the document is split into coherent sections that reflect the document's logical structure.
+```python
+def parse_pdf(filePath: str):
+    raw_pdf_elements = partition_pdf(
+        filename=filePath,
+        chunking_strategy="by_title",  # Splitting based on document titles
+        max_characters=4000,
+        new_after_n_chars=3800,
+        combine_text_under_n_chars=2000
+    )
+    return raw_pdf_elements
+```
 
-2. **Mitigating the Slowness of Nearest Neighbor Similarity Calculation**:
-   - **Approximate Nearest Neighbor (ANN)**: Instead of finding the exact nearest neighbor, ANN methods like HNSW (Hierarchical Navigable Small World) or LSH (Locality Sensitive Hashing) provide approximate solutions much faster. These methods trade off a bit of accuracy for significantly improved speed, especially useful in large datasets.
-   - **Vector Indexing**: Using libraries like FAISS (Facebook AI Similarity Search), which is optimized for fast retrieval of similar vectors, can drastically reduce computation time. These libraries pre-process vectors into efficient data structures that allow for rapid querying.
-   - **Dimensionality Reduction**: Techniques like PCA (Principal Component Analysis) or t-SNE can reduce the dimensionality of vectors, making the nearest neighbor search faster by lowering computational complexity.
+By splitting based on **titles** and sections, the documents are chunked in a way that preserves the topic flow, making the resulting chunks more meaningful for retrieval and embedding. This strategy enhances the relevance of the retrieved chunks during queries.
+#### Semntic Chunking
+The project utilizes **chunking** to split large documents into smaller, coherent pieces for better retrieval and embedding. This is done using two methods:
+- **SemanticChunker**: Splits text based on semantic coherence, ensuring each chunk maintains logical meaning.
+These strategies improve the **vector store** by ensuring that each chunk is more relevant, retrievable, and efficiently embedded, leading to better retrieval performance.
 
-3. **Improving Similarity-Based Search**:
-   - **Contextual Refinement**: Enhance the search by incorporating context-aware models like BERT or GPT, which can better understand the nuances of queries and documents. This reduces the chances of retrieving irrelevant results based solely on surface-level similarities.
-   - **Feedback Mechanisms**: Implement a feedback loop where users can rate the relevance of search results. Over time, the system can learn from this feedback to refine its future searches.
-   - **Retrieval Augmented Generation (RAG)**: By using RAG, the search process can be improved by retrieving contextually relevant documents and then generating a more precise response. This two-step approach ensures that even if the direct search isn’t perfect, the generated answer is still accurate and relevant.
+```python
+text_splitter = SemanticChunker(embedding_function, breakpoint_threshold_type="percentile")
+docs = [text_splitter.split_text(text) for text in docs]
+```
 
-   # Project Overview
+Chunking ensures better search results by creating meaningful, smaller document sections for embedding and retrieval in the vector store.
+### Query Expansion
+The query expansion process in this project enhances the user query by appending additional context generated by a Large Language Model (LLM). This helps retrieve documents that are more aligned with the underlying semantics of the user's request.
 
-This project uses vector embeddings and semantic search to answer questions based on a document's content. The system processes a the MeTTa documentation in form of a PDF document to generate embeddings and stores them in a vector database for efficient querying. It leverages the HuggingFace library for embeddings and a local Chroma database for vector storage.
+```python
+def expand_query(query):
+    context = """Competent Program Evolution - ..."""
+    model = genai.GenerativeModel(model_name='gemini-pro')
+    messages = [
+        {
+            "role": "model",
+            "parts": [
+                "You are a highly intelligent prompt engineer designed to expand and optimize user queries...",
+                f"Query: #^{query}^#",
+                f"Context: #^{context}^#"
+            ]
+        }
+    ]
+    response = model.generate_content(messages)
+    return response.candidates[0].content.parts[0].text.replace("#^", "").replace("^#", "")
+```
+
+The **expand_query** function uses the Gemini API to append relevant keywords and context to the original query. This enriched query improves document retrieval by increasing the precision of search results based on semantic relevance.
+
+### Re-Ranking
+
+After retrieving documents from the vector store, this project implements **re-ranking** based on cosine similarity between the query and the retrieved documents. This ensures the most contextually relevant documents are prioritized.
+
+```python
+def get_relevant_context_from_db(query):
+    embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    vector_db = Chroma(persist_directory="./comprog_chroma_db", embedding_function=embedding_model)
+
+    initial_search_results = vector_db.similarity_search(query, k=20)
+    query_embedding = np.array(embedding_model.embed_query(query)).reshape(1, -1)
+
+    reranked_results = []
+    for result in initial_search_results:
+        result_embedding = np.array(embedding_model.embed_query(result.page_content)).reshape(1, -1)
+        c_similarity = cosine_similarity(query_embedding, result_embedding)
+        reranked_results.append((result, c_similarity[0][0]))
+
+    reranked_results.sort(key=lambda x: x[1], reverse=True)
+    context = "\n".join([result.page_content for result, _ in reranked_results[:10]])
+    return context
+```
+
+In this process, documents are first retrieved using vector similarity search. The re-ranking stage then sorts these results based on their cosine similarity scores to the query, returning only the most relevant documents.
+
+### Prompt Engineering
+
+The **generate_answer** function demonstrates **prompt engineering** by carefully constructing a prompt to maximize the performance of the Gemini LLM. The structure of the prompt ensures that the model generates responses based only on the relevant context provided. Adding Domain specific instruction will greatly affect the output of the LLM.
+
+```python
+def generate_answer(query, context):
+    model = genai.GenerativeModel(model_name='gemini-pro')
+    messages = [
+        {
+            "role": "model",
+            "parts": [
+                "You are a highly intelligent research assistant tasked with answering specific research-related questions...",
+                f"Query: #^^{query}^^#",
+                f"Context: #^^{context}^^#"
+            ]
+        }
+    ]
+    answer = model.generate_content(messages)
+    return answer.candidates[0].content.parts[0].text.replace("#^^", "").replace("^^#", "")
+```
+
+By engineering the prompt to include explicit instructions and only the necessary context, this function ensures that the responses are accurate and grounded in the relevant data, avoiding hallucinations or unrelated content.
+
 ## Setup Instructions
 
 To set up this project on your local machine, follow these steps:
@@ -69,105 +145,8 @@ python rag.py
 ```
 
 The application will start, and you can access it by navigating to `http://127.0.0.1:5000/` in your web browser.
-## Key Components
 
-### 1. **Vector Database with Chroma**
-
-Chroma is used to store and query document embeddings. Here’s how it fits into the project:
-
-- **Document Loading and Chunking**: The PDF document is loaded and split into chunks.
-  
-  ```python
-  from langchain.text_splitter import RecursiveCharacterTextSplitter
-  from langchain_community.document_loaders import PyPDFLoader
-
-  loaders = [PyPDFLoader('./Metta.pdf')]
-
-  docs = []
-  for file in loaders:
-      docs.extend(file.load())
-
-  text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-  docs = text_splitter.split_documents(docs)
-  ```
-
-  - **PyPDFLoader**: Loads the PDF document.
-  - **RecursiveCharacterTextSplitter**: Splits the document into chunks of 1000 characters with 100 characters overlapping for context.
-
-- **Embedding Generation**: Each text chunk is converted into a vector representation using a pre-trained model.
-
-  ```python
-  from langchain_community.embeddings import HuggingFaceEmbeddings
-
-  embedding_function = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2", model_kwargs={'device': 'cpu'})
-  ```
-
-  - **HuggingFaceEmbeddings**: Utilizes the `sentence-transformers/all-MiniLM-L6-v2` model to convert text chunks into vectors.
-
-- **Vector Store Creation**: The vector embeddings are stored in Chroma’s vector database.
-
-  ```python
-  from langchain_community.vectorstores import Chroma
-
-  vectorstore = Chroma.from_documents(docs, embedding_function, persist_directory="./chroma_db_nccn")
-
-  print(vectorstore._collection.count())
-  ```
-
-  - **Chroma**: Creates a vector store from document embeddings and saves it in a specified directory.
-
-### 2. **Query Handling**
-
-When a user query is made, the system performs a semantic search to find relevant document chunks.
-
-- **Context Retrieval**: Searches the vector store for relevant chunks based on the query.
-
-  ```python
-  def get_relevant_context_from_db(query):
-      context = ""
-      embedding_function = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-      vector_db = Chroma(persist_directory="./chroma_db_nccn", embedding_function=embedding_function)
-      search_results = vector_db.similarity_search(query, k=6)
-      for result in search_results:
-          context += result.page_content + "\n"
-      return context
-  ```
-
-  - **Similarity Search**: Finds the top 6 similar chunks to the query and concatenates them for context.
-
-### 3. **AI Answer Generation**
-
-The `generate_answer` function sends a prompt to the AI model to generate a response based on the retrieved context.
-
-- **Answer Generation**: Uses the Gemini API to generate a response based on the context provided.
-
-  ```python
-  import google.generativeai as genai
-
-  def generate_answer(prompt):
-      genai.configure(api_key=GEMINI_API_KEY)
-      model = genai.GenerativeModel(model_name='gemini-pro')
-      try:
-          answer = model.generate_content(prompt)
-          if answer.text:
-              return answer.text
-          else:
-              return "Sorry, the response was blocked due to safety concerns."
-      except ValueError as e:
-          return f"An error occurred: {str(e)}. Please try again or rephrase your query."
-  ```
-
-  - **API Interaction**: Sends the generated prompt to the AI model and handles potential errors.
-
-### Summary
-
-1. **Document Processing**: Loads and splits the PDF into text chunks.
-2. **Embedding**: Converts chunks into vectors using HuggingFace’s model.
-3. **Vector Storage**: Stores vectors in Chroma’s vector database.
-4. **Query Processing**: Retrieves relevant document chunks based on the query.
 
 ### Screenshots
 
-![Website Screenshot](./images/mettarag.png)
----
-![Website Screenshot](./images/contextfetch.png)
+![Website Screenshot](./images/imprag.png)

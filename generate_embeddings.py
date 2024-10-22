@@ -1,4 +1,6 @@
+import os
 import random
+from dotenv import load_dotenv
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -8,13 +10,12 @@ from pydantic import BaseModel
 from unstructured.partition.pdf import partition_pdf
 from pytesseract import pytesseract
 from typing import Any
-loaders = [PyPDFLoader('./Competent_Program_Evolution.pdf')]
 
 docs = []
-
-# for file in loaders:
-#     docs.extend(file.load())
-pytesseract.tesseract_cmd = r'C:\Users\felek\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
+load_dotenv()
+# Access the API key from environment variables
+TESSERACT_PATH = os.getenv('TESSERACT_PATH')
+pytesseract.tesseract_cmd = f'{TESSERACT_PATH}'
 def parse_pdf(filePath:str):
     raw_pdf_elements = partition_pdf(
     filename=filePath,
@@ -35,14 +36,11 @@ def parse_pdf(filePath:str):
 )
     return raw_pdf_elements
 def get_Docs():
-    raw_pdf_elements = parse_pdf('./Moses.pdf')
+    raw_pdf_elements = parse_pdf('./CPE.pdf')
     class Element(BaseModel):
         type: str
         text: Any
     print(raw_pdf_elements)
-    # print(raw_pdf_elements[random.randint(0,len(raw_pdf_elements)-1)].page_content)
-    # extract table and textual objects from parser
-
 # Categorize by type
     categorized_elements = []
     for element in raw_pdf_elements:
@@ -50,16 +48,11 @@ def get_Docs():
             categorized_elements.append(Element(type="table", text=str(element)))
         elif "unstructured.documents.elements.CompositeElement" in str(type(element)):
             categorized_elements.append(Element(type="text", text=str(element)))
-
-# Tables
-    table_elements = [e for e in categorized_elements if e.type == "table"]
-    print(len(table_elements))
-
 # Text
     text_elements = [e for e in categorized_elements if e.type == "text"]
     print(len(text_elements))
     return text_elements
-def test ():
+def run ():
     result = get_Docs()
     print(type(result[0]))
     print(type(result))
@@ -72,24 +65,7 @@ def test ():
         for text in doc:
             texts.append(text)
 
-    vectorstore = Chroma.from_texts(texts, embedding_function, persist_directory="./moses_chroma_db")
-    print(type(docs))
-    print(type(docs[0]))
-    print(docs[0])
-    print(len(docs))
-    print(vectorstore._collection.count())
-    return docs
+    vectorstore = Chroma.from_texts(texts, embedding_function, persist_directory="./comprog_chroma_db")
+    return vectorstore
     
-    
-
-
-test()
-# print(test())
-# docs = test()
-# text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-# print(type(docs[0]))
-
-
-# print(vectorstore._collection.count())
-# print(docs[0])
-# print(type(docs))
+run()

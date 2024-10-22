@@ -1,8 +1,11 @@
 Flask==2.3.1
-google-generativeai==0.10.0
-langchain-community==0.0.157
-python-dotenv==1.0.0
-markdown==3.4.4
-pypdf==3.0.3
+google-generativeai
+langchain-community
+python-dotenv
+markdown
+pypdf
 langchain
-chromadb==0.5.5
+chromadb
+pydantic
+unstructured
+pytesseract
